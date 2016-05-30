@@ -8,5 +8,5 @@
     <string name="help">이 예제는 EmulatorView 위젯과 TermSession 클래스를 통해 텔넷이 어떻게 작동하는지 보여줍니다.</string>
 
     <!-- This is a better demo, but towel.blinkenlights.nl is more fun :) -->
-    <string name="default_telnet_hostname">telehack.com</string>
+    <string name="default_telnet_hostname">127.0.0.1:6502</string>
 </resources>

@@ -38,15 +38,19 @@ import jackpal.androidterm.libtermexec.v1.*;
 import jackpal.androidterm.util.SessionList;
 import jackpal.androidterm.util.TermSettings;
 
+import java.io.IOException;
 import java.util.UUID;
 
 public class TermService extends Service implements TermSession.FinishCallback
 {
+    // Socket mSocket;
     /* Parallels the value of START_STICKY on API Level >= 5 */
     private static final int COMPAT_START_STICKY = 1;
 
     private static final int RUNNING_NOTIFICATION = 1;
     private ServiceForegroundCompat compat;
+
+    private static final int MSG_CONNECTED = 1;
 
     private SessionList mTermSessions;
 
@@ -63,6 +67,7 @@ public class TermService extends Service implements TermSession.FinishCallback
     }
 
     /* This should be @Override if building with API Level >=5 */
+    //        return START_STICKY;
     public int onStartCommand(Intent intent, int flags, int startId) {
         return COMPAT_START_STICKY;
     }
@@ -80,12 +85,20 @@ public class TermService extends Service implements TermSession.FinishCallback
         }
     }
 
+
     @Override
     public void onCreate() {
+
+
+
+        super.onCreate();
+
         // should really belong to the Application class, but we don't use one...
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         SharedPreferences.Editor editor = prefs.edit();
-        String defValue = getDir("HOME", MODE_PRIVATE).getAbsolutePath();
+        //String defValue = getDir("HOME", MODE_PRIVATE).getAbsolutePath();
+        //String defValue = getDir("etc", MODE_PRIVATE).getAbsolutePath();
+        String defValue = getDir("etc", MODE_WORLD_READABLE | MODE_WORLD_WRITEABLE).getAbsolutePath();
         String homePath = prefs.getString("home_path", defValue);
         editor.putString("home_path", homePath);
         editor.commit();
@@ -94,7 +107,7 @@ public class TermService extends Service implements TermSession.FinishCallback
         mTermSessions = new SessionList();
 
         /* Put the service in the foreground. */
-        Notification notification = new Notification(R.drawable.ic_stat_service_notification_icon, getText(R.string.service_notify_text), System.currentTimeMillis());
+        Notification notification = new Notification(R.drawable.ic_action_circles, getText(R.string.service_notify_text), System.currentTimeMillis());
         notification.flags |= Notification.FLAG_ONGOING_EVENT;
         Intent notifyIntent = new Intent(this, Term.class);
         notifyIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -103,18 +116,25 @@ public class TermService extends Service implements TermSession.FinishCallback
         compat.startForeground(RUNNING_NOTIFICATION, notification);
 
         Log.d(TermDebug.LOG_TAG, "TermService started");
+        // {ADP}
+        //mSocket = new Socket();
         return;
     }
+
 
     @Override
     public void onDestroy() {
         compat.stopForeground(true);
         for (TermSession session : mTermSessions) {
-            /* Don't automatically remove from list of sessions -- we clear the
-             * list below anyway and we could trigger
-             * ConcurrentModificationException if we do */
+
+           /*
+           *  Don't automatically remove from list of sessions -- we clear the
+            * list below anyway and we could trigger
+            * ConcurrentModificationException if we do
+            * */
             session.setFinishCallback(null);
             session.finish();
+
         }
         mTermSessions.clear();
         return;

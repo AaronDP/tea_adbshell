@@ -56,6 +56,9 @@ public class ShellTermSession extends GenericTermSession {
 
         initializeSession();
 
+        //setTermOut(mSocket.getOutputStream());
+        //setTermIn(mSocket.getInputStream());
+
         setTermOut(new ParcelFileDescriptor.AutoCloseOutputStream(mTermFd));
         setTermIn(new ParcelFileDescriptor.AutoCloseInputStream(mTermFd));
 
@@ -93,10 +96,13 @@ public class ShellTermSession extends GenericTermSession {
         if (settings.verifyPath()) {
             path = checkPath(path);
         }
-        String[] env = new String[3];
+        String[] env = new String[5];
         env[0] = "TERM=" + settings.getTermType();
-        env[1] = "PATH=" + path;
+        env[1] = "PATH=" + settings.getHomePath() + ":" + path; // {ADP} prepended home to this -- FIXME
         env[2] = "HOME=" + settings.getHomePath();
+        env[3] = "TERMINFO=/data/local/tmp/lib/terminfo";
+        String ld_library_path = System.getenv("LD_LIBRARY_PATH");
+        env[4] = "LD_LIBRARY_PATH=" + ld_library_path + ":" + "/data/local/tmp/lib";
 
         mProcId = createSubprocess(settings.getShell(), env);
     }

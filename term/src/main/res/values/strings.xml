@@ -18,6 +18,7 @@
    <string name="application_terminal">Terminal Emulator</string>
    <string name="preferences">Preferences</string>
    <string name="new_window">New window</string>
+    <string name="new_plus_window">New +window</string>
    <string name="close_window">Close window</string>
    <string name="window_list">Windows</string>
    <string name="prev_window">Prev window</string>

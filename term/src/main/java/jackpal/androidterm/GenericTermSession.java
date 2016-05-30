@@ -73,6 +73,8 @@ class GenericTermSession extends TermSession {
         updatePrefs(settings);
     }
 
+
+
     public void updatePrefs(TermSettings settings) {
         mSettings = settings;
         setColorScheme(new ColorScheme(settings.getColorScheme()));
@@ -87,7 +89,7 @@ class GenericTermSession extends TermSession {
         }
         super.initializeEmulator(columns, rows);
 
-        setPtyUTF8Mode(getUTF8Mode());
+        // {ADP} -- no can do TODO --> setPtyUTF8Mode(getUTF8Mode());
         setUTF8ModeUpdateCallback(mUTF8ModeNotify);
     }
 
@@ -177,6 +179,7 @@ class GenericTermSession extends TermSession {
             return;
 
         try {
+            // {ADP} wont work for socket connections
             Exec.setPtyWindowSizeInternal(getIntFd(mTermFd), row, col, xpixel, ypixel);
         } catch (IOException e) {
             Log.e("exec", "Failed to set window size: " + e.getMessage());
@@ -195,6 +198,12 @@ class GenericTermSession extends TermSession {
         if (!mTermFd.getFileDescriptor().valid())
             return;
 
+        //Sorry to have to do this, but I need to not call this while Socket mode
+        // so...
+
+        //return;
+
+        /**
         try {
             Exec.setPtyUTF8ModeInternal(getIntFd(mTermFd), utf8Mode);
         } catch (IOException e) {
@@ -203,6 +212,7 @@ class GenericTermSession extends TermSession {
             if (isFailFast())
                 throw new IllegalStateException(e);
         }
+         **/
     }
 
     /**

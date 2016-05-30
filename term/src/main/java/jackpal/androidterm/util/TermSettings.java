@@ -152,6 +152,8 @@ public class TermSettings {
     public static final int BACK_KEY_SENDS_TAB = 4;
     private static final int BACK_KEY_MAX = 4;
 
+    private boolean mIsTcp = false;
+
     public TermSettings(Resources res, SharedPreferences prefs) {
         readDefaultPrefs(res);
         readPrefs(prefs);
@@ -370,4 +372,9 @@ public class TermSettings {
     public String getHomePath() {
         return mHomePath;
     }
+
+    public boolean getIsTcp() { return mIsTcp; }
+
+    public void setIsTcpTrue() { mIsTcp = true; }
+    public void setIsTcpFalse() { mIsTcp = false; }
 }

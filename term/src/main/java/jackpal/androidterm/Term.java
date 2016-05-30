@@ -16,6 +16,8 @@
 
 package jackpal.androidterm;
 
+import android.os.AsyncTask;
+import android.os.Message;
 import android.text.TextUtils;
 import jackpal.androidterm.compat.ActionBarCompat;
 import jackpal.androidterm.compat.ActivityCompat;
@@ -30,7 +32,14 @@ import jackpal.androidterm.emulatorview.compat.KeycodeConstants;
 import jackpal.androidterm.util.SessionList;
 import jackpal.androidterm.util.TermSettings;
 
+import java.io.FileDescriptor;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.Socket;
+import java.net.SocketException;
 import java.text.Collator;
 import java.util.Arrays;
 import java.util.List;
@@ -85,6 +94,9 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
      * The ViewFlipper which holds the collection of EmulatorView widgets.
      */
     private TermViewFlipper mViewFlipper;
+    private static Socket mSocket;
+    //InputStream mtermIn;
+    //OutputStream mtermOut;
 
     /**
      * The name of the ViewFlipper in the resources.
@@ -116,6 +128,47 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     // Available on API 12 and later
     private static final int WIFI_MODE_FULL_HIGH_PERF = 3;
 
+    // TESTING KEEPALIVE ================================================
+
+    private final static int SOL_TCP = 6;
+
+    private final static int TCP_KEEPIDLE = 4;
+    private final static int TCP_KEEPINTVL = 5;
+    private final static int TCP_KEEPCNT = 6;
+
+    protected void setKeepaliveSocketOptions(Socket socket, int idleTimeout, int interval, int count) {
+        try {
+            socket.setKeepAlive(true);
+            try {
+                Field socketImplField = Class.forName("java.net.Socket").getDeclaredField("impl");
+                socketImplField.setAccessible(true);
+                if(socketImplField != null) {
+                    Object plainSocketImpl = socketImplField.get(socket);
+                    Field fileDescriptorField = Class.forName("java.net.SocketImpl").getDeclaredField("fd");
+                    if(fileDescriptorField != null) {
+                        fileDescriptorField.setAccessible(true);
+                        FileDescriptor fileDescriptor = (FileDescriptor)fileDescriptorField.get(plainSocketImpl);
+                        Class libCoreClass = Class.forName("libcore.io.Libcore");
+                        Field osField = libCoreClass.getDeclaredField("os");
+                        osField.setAccessible(true);
+                        Object libcoreOs = osField.get(libCoreClass);
+                        Method setSocketOptsMethod = Class.forName("libcore.io.ForwardingOs").getDeclaredMethod("setsockoptInt", FileDescriptor.class, int.class, int.class, int.class);
+                        if(setSocketOptsMethod != null) {
+                            setSocketOptsMethod.invoke(libcoreOs, fileDescriptor, SOL_TCP, TCP_KEEPIDLE, idleTimeout);
+                            setSocketOptsMethod.invoke(libcoreOs, fileDescriptor, SOL_TCP, TCP_KEEPINTVL, interval);
+                            setSocketOptsMethod.invoke(libcoreOs, fileDescriptor, SOL_TCP, TCP_KEEPCNT, count);
+                        }
+                    }
+                }
+            }
+            catch (Exception reflectionException) {}
+        } catch (SocketException e) {}
+    }
+
+
+
+    // =====================================================================================
+
     private boolean mBackKeyPressed;
 
     private static final String ACTION_PATH_BROADCAST = "jackpal.androidterm.broadcast.APPEND_TO_PATH";
@@ -125,6 +178,7 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     private int mPendingPathBroadcasts = 0;
     private BroadcastReceiver mPathReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
+            Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE mPathReceiver");
             String path = makePathFromBundle(getResultExtras(false));
             if (intent.getAction().equals(ACTION_PATH_PREPEND_BROADCAST)) {
                 mSettings.setPrependPath(path);
@@ -149,6 +203,7 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
             TermService.TSBinder binder = (TermService.TSBinder) service;
             mTermService = binder.getService();
             if (mPendingPathBroadcasts <= 0) {
+                // got to test this later --->
                 populateViewFlipper();
                 populateWindowList();
             }
@@ -329,6 +384,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
         super.onCreate(icicle);
 
         Log.v(TermDebug.LOG_TAG, "onCreate");
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onCreate");
+
 
         mPrivateAlias = new ComponentName(this, RemoteInterface.PRIVACT_ACTIVITY_ALIAS);
 
@@ -423,6 +480,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
 
     @Override
     protected void onStart() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onStart");
+
         super.onStart();
 
         if (!bindService(TSIntent, mTSConnection, BIND_AUTO_CREATE)) {
@@ -431,11 +490,13 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     }
 
     private void populateViewFlipper() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE populateViewFlipper");
         if (mTermService != null) {
             mTermSessions = mTermService.getSessions();
 
             if (mTermSessions.size() == 0) {
                 try {
+                    //mTermSessions.add(createTermSession());
                     mTermSessions.add(createTermSession());
                 } catch (IOException e) {
                     Toast.makeText(this, "Failed to start terminal session", Toast.LENGTH_LONG).show();
@@ -462,6 +523,7 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     }
 
     private void populateWindowList() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE populateWindowList");
         if (mActionBar == null) {
             // Not needed
             return;
@@ -483,6 +545,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
 
     @Override
     public void onDestroy() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onDestroy, calling super.onDestroy()");
+
         super.onDestroy();
 
         PreferenceManager.getDefaultSharedPreferences(this)
@@ -502,9 +566,46 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     }
 
     private void restart() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE restart");
         startActivity(getIntent());
         finish();
     }
+
+    //protected static TermSession createSocketTermSession(Context context, TermSettings settings, String initialCommand) throws IOException {
+    //    GenericTermSession session = new SocketTermSession(settings, initialCommand);
+    //    session.setProcessExitMessage(context.getString(R.string.process_exit_message));
+    //    return session;
+    //}
+
+    protected static TermSession createLocalhostTermSession(Context context, TermSettings settings, String initialCommand) throws IOException {
+        LocalhostTermSession session = new LocalhostTermSession(mSocket, settings, false);
+        // XXX We should really be able to fetch this from within TermSession
+        session.setProcessExitMessage(context.getString(R.string.process_exit_message));
+
+        return session;
+    }
+
+    private TermSession createLocalhostTermSession() throws IOException {
+        TermSettings settings = mSettings;
+        TermSession session = createLocalhostTermSession(this, settings, settings.getInitialCommand());
+        session.setFinishCallback(mTermService);
+        return session;
+    }
+
+    protected static TermSession createFifoTermSession(Context context, TermSettings settings, String initialCommand) throws IOException {
+        GenericFifoTermSession session = new FifoTermSession(settings, initialCommand);
+        // XXX We should really be able to fetch this from within TermSession
+        session.setProcessExitMessage(context.getString(R.string.process_exit_message));
+
+        return session;
+    }
+    private TermSession createFifoTermSession() throws IOException {
+        TermSettings settings = mSettings;
+        TermSession session = createFifoTermSession(this, settings, settings.getInitialCommand());
+        session.setFinishCallback(mTermService);
+        return session;
+    }
+
 
     protected static TermSession createTermSession(Context context, TermSettings settings, String initialCommand) throws IOException {
         GenericTermSession session = new ShellTermSession(settings, initialCommand);
@@ -561,7 +662,13 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
 
         if (mTermSessions != null) {
             for (TermSession session : mTermSessions) {
-                ((GenericTermSession) session).updatePrefs(mSettings);
+                if(session.getClass() == GenericTermSession.class) {
+                    ((GenericTermSession) session).updatePrefs(mSettings);
+                }
+                else if (session.getClass() == LocalhostTermSession.class) {
+                    ((LocalhostTermSession) session).updatePrefs(mSettings);
+                }
+
             }
         }
 
@@ -602,6 +709,9 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
 
     @Override
     public void onPause() {
+
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onPause, calling super.onPause()");
+
         super.onPause();
 
         if (AndroidCompat.SDK < 5) {
@@ -670,6 +780,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main, menu);
         MenuItemCompat.setShowAsAction(menu.findItem(R.id.menu_new_window), MenuItemCompat.SHOW_AS_ACTION_ALWAYS);
+        // {ADP} HOOK location to filter if we have plus installed
+        MenuItemCompat.setShowAsAction(menu.findItem(R.id.menu_new_plus_window), MenuItemCompat.SHOW_AS_ACTION_ALWAYS);
         MenuItemCompat.setShowAsAction(menu.findItem(R.id.menu_close_window), MenuItemCompat.SHOW_AS_ACTION_IF_ROOM);
         return true;
     }
@@ -681,6 +793,9 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
             doPreferences();
         } else if (id == R.id.menu_new_window) {
             doCreateNewWindow();
+        } else if (id == R.id.menu_new_plus_window) {
+            // {ADP} --> HOOK location for plus
+            doCreateNewPlusWindow();
         } else if (id == R.id.menu_close_window) {
             confirmCloseWindow();
         } else if (id == R.id.menu_window_list) {
@@ -719,7 +834,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
         }
 
         try {
-            TermSession session = createTermSession();
+            //TermSession session = createTermSession();
+            TermSession session = createFifoTermSession();
 
             mTermSessions.add(session);
 
@@ -732,6 +848,76 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
             Toast.makeText(this, "Failed to create a session", Toast.LENGTH_SHORT).show();
         }
     }
+    private void doCreateNewPlusWindow() {
+        if (mTermSessions == null) {
+            Log.w(TermDebug.LOG_TAG, "Couldn't create new window because mTermSessions == null");
+            return;
+        }
+        connectToTelnet("127.0.0.1:6502");
+    }
+
+    /**
+     * Connect to the Telnet server.
+     */
+    public void connectToTelnet(String server) {
+        String[] telnetServer = server.split(":", 2);
+        final String hostname = telnetServer[0];
+        int port = 6502;
+        if (telnetServer.length == 2) {
+            port = Integer.parseInt(telnetServer[1]);
+        }
+        final int portNum = port;
+
+        /* On Android API >= 11 (Honeycomb and later), network operations
+           must be done off the main thread, so kick off a new thread to
+           perform the connect. */
+        new Thread() {
+            public void run() {
+                // Connect to the server
+                try {
+                    Socket socket = new Socket(hostname, portNum);
+                    mSocket = socket;
+                    setKeepaliveSocketOptions(mSocket,3600,60,36000);
+                } catch (IOException e) {
+                    Log.e("Term", "Could not create socket", e);
+                    return;
+                }
+
+                // Notify the main thread of the connection
+                mSocketHandler.sendEmptyMessage(MSG_CONNECTED);
+            }
+        }.start();
+    }
+
+    /**
+     * Handler which will receive the message from the Telnet connect thread
+     * that the connection has been established.
+     */
+    Handler mSocketHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            if (msg.what == MSG_CONNECTED) {
+                // {ADP} --> moved to createTelnetSession()
+
+                TermSession session = null;
+                try {
+                    session = createLocalhostTermSession();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                mTermSessions.add(session);
+
+                TermView view = createEmulatorView(session);
+                view.updatePrefs(mSettings);
+
+                mViewFlipper.addView(view);
+                mViewFlipper.setDisplayedChild(mViewFlipper.getChildCount()-1);
+            }
+        }
+    };
+    //Socket mSocket;
+    private static final int MSG_CONNECTED = 1;
 
     private void confirmCloseWindow() {
         final AlertDialog.Builder b = new AlertDialog.Builder(this);
@@ -785,6 +971,7 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
                 }
             } else {
                 // Close the activity if user closed all sessions
+                // {ADP} --> hook location for keep app open after last window closed
                 // TODO the left path will be invoked when nothing happened, but this Activity was destroyed!
                 if (mTermSessions == null || mTermSessions.size() == 0) {
                     mStopServiceOnFinish = true;
@@ -936,18 +1123,21 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
 
     // Called when the list of sessions changes
     public void onUpdate() {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onUpdate");
         SessionList sessions = mTermSessions;
         if (sessions == null) {
             return;
         }
 
         if (sessions.size() == 0) {
+            // {ADP} --> HOOK LOCATION FOR CLOSE APP ON LAST WINDOW CLOSED ?
             mStopServiceOnFinish = true;
             finish();
         } else if (sessions.size() < mViewFlipper.getChildCount()) {
             for (int i = 0; i < mViewFlipper.getChildCount(); ++i) {
                 EmulatorView v = (EmulatorView) mViewFlipper.getChildAt(i);
                 if (!sessions.contains(v.getTermSession())) {
+                    Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE onUpdate -- invoking onPause() and removeView()");
                     v.onPause();
                     mViewFlipper.removeView(v);
                     --i;
@@ -1099,6 +1289,8 @@ public class Term extends Activity implements UpdateCallback, SharedPreferences.
     }
 
     private void doUIToggle(int x, int y, int width, int height) {
+        Log.i(TermDebug.LOG_TAG, "Aaron: INSIDE doUIToggle");
+
         switch (mActionBarMode) {
         case TermSettings.ACTION_BAR_MODE_NONE:
             if (AndroidCompat.SDK >= 11 && (mHaveFullHwKeyboard || y < height / 2)) {

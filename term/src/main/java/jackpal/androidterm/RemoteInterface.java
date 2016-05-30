@@ -160,6 +160,7 @@ public class RemoteInterface extends Activity {
         }
 
         try {
+            // {ADP} -- you know what
             TermSession session = Term.createTermSession(this, mSettings, initialCommand);
 
             session.setFinishCallback(service);

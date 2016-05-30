@@ -41,6 +41,7 @@ static void android_os_Exec_setPtyWindowSize(JNIEnv *env, jobject clazz,
     sz.ws_ypixel = ypixel;
 
     // TODO: handle the situation, when the file descriptor is incompatible with TIOCSWINSZ (e.g. not from /dev/ptmx)
+    // {ADP} this throws when using Socket term instead of terminal
     if (ioctl(fd, TIOCSWINSZ, &sz) == -1)
         env->ThrowNew(env->FindClass("java/io/IOException"), "Failed to issue TIOCSWINSZ ioctl");
 }
